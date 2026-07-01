@@ -121,7 +121,7 @@
         filter: brightness(1.3);
     }
     #badge-bg { transition: all 0.4s ease; }
-    #wifi-icon { transition: transform 0.4s ease; }
+    #bluetooth-icon { transition: transform 0.4s ease; }
     #connection-dot-ring { transition: stroke 0.4s ease; }
     
     @keyframes flicker-on {
@@ -140,8 +140,8 @@
         50% { opacity: 0.6; }
         100% { opacity: 0.3; filter: drop-shadow(0 0 0px #913BF4); }
     }
-    .wifi-on { animation: flicker-on 0.4s forwards; }
-    .wifi-off { animation: flicker-off 0.4s forwards; }
+    .bt-on { animation: flicker-on 0.4s forwards; }
+    .bt-off { animation: flicker-off 0.4s forwards; }
 
     @keyframes pulse-alive {
         0% { filter: drop-shadow(0 0 2px #34d399); }
@@ -192,11 +192,8 @@
         <g id="connection-badge">
             <rect id="badge-bg" x="739.941" y="39.7297" width="139.293" height="23.2443" rx="8.6548" stroke="#913BF4" stroke-width="0.49456" stroke-linecap="round"/>
             
-            <g id="wifi-icon" transform="translate(-20, 0)">
-                <!-- Reusing WiFi icon as a general connection icon -->
-                <path d="M777.395 55.6591C777.395 55.7629 777.354 55.8625 777.281 55.936C777.207 56.0094 777.108 56.0506 777.004 56.0506C776.9 56.0506 776.8 56.0094 776.727 55.936C776.654 55.8625 776.612 55.7629 776.612 55.6591C776.612 55.5553 776.654 55.4557 776.727 55.3823C776.8 55.3088 776.9 55.2676 777.004 55.2676C777.108 55.2676 777.207 55.3088 777.281 55.3823C777.354 55.4557 777.395 55.5553 777.395 55.6591Z" fill="#913BF4"/>
-                <path d="M777.279 55.9373C777.353 55.8639 777.394 55.7643 777.394 55.6604C777.394 55.5566 777.353 55.457 777.279 55.3836C777.206 55.3102 777.106 55.2689 777.003 55.2689C776.899 55.2689 776.799 55.3102 776.726 55.3836C776.652 55.457 776.611 55.5566 776.611 55.6604C776.611 55.7643 776.652 55.8639 776.726 55.9373C776.799 56.0107 776.899 56.052 777.003 56.052C777.106 56.052 777.206 56.0107 777.279 55.9373Z" fill="#913BF4"/>
-                <path d="M769.955 48.5636C773.96 44.9749 780.045 44.9749 784.05 48.5636M772.043 50.8995C773.407 49.6797 775.173 49.0054 777.003 49.0054C778.832 49.0054 780.598 49.6797 781.962 50.8995M774.131 53.2338C774.921 52.5274 775.943 52.1368 777.003 52.1368C778.062 52.1368 779.084 52.5274 779.874 53.2338M777.394 55.6604C777.394 55.7643 777.353 55.8639 777.279 55.9373C777.206 56.0107 777.106 56.052 777.003 56.052C776.899 56.052 776.799 56.0107 776.726 55.9373C776.652 55.8639 776.611 55.7643 776.611 55.6604C776.611 55.5566 776.652 55.457 776.726 55.3836C776.799 55.3102 776.899 55.2689 777.003 55.2689C777.106 55.2689 777.206 55.3102 777.279 55.3836C777.353 55.457 777.394 55.5566 777.394 55.6604Z" stroke="#913BF4" stroke-width="1.56611" stroke-linecap="round" stroke-linejoin="round"/>
+            <g id="bluetooth-icon" transform="translate(-20, 0)">
+                <path d="M772.5 47 L781.5 55 L777 58.5 L777 43.5 L781.5 47 L772.5 55" stroke="#913BF4" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
             </g>
             
             <text id="status-text" x="812" y="54" fill="#913BF4" font-family="'Orbitron', sans-serif" font-size="8.8" font-weight="700" letter-spacing="0.08em" text-anchor="middle">TAP TO CONNECT</text>
@@ -353,7 +350,7 @@
         const badge = document.getElementById('connection-badge');
         const badgeBg = document.getElementById('badge-bg');
         const text = document.getElementById('status-text');
-        const wifi = document.getElementById('wifi-icon');
+        const btIcon = document.getElementById('bluetooth-icon');
         const dot = document.getElementById('connection-dot');
         const dotRing = document.getElementById('connection-dot-ring');
 
@@ -363,12 +360,12 @@
             badge.style.opacity = '1';
             badgeBg.setAttribute('x', '759.941');
             badgeBg.setAttribute('width', '119.293');
-            wifi.style.transform = 'translate(0px, 0px)';
+            btIcon.style.transform = 'translate(0px, 0px)';
             
             scrambleText(text, 'CONNECTED', '825');
             
-            wifi.classList.remove('wifi-off');
-            wifi.classList.add('wifi-on');
+            btIcon.classList.remove('bt-off');
+            btIcon.classList.add('bt-on');
             
             dot.classList.add('dot-alive');
             dot.classList.remove('dot-offline');
@@ -377,12 +374,12 @@
             badge.style.opacity = '0.7';
             badgeBg.setAttribute('x', '739.941');
             badgeBg.setAttribute('width', '139.293');
-            wifi.style.transform = 'translate(-20px, 0px)';
+            btIcon.style.transform = 'translate(-20px, 0px)';
             
             scrambleText(text, 'TAP TO CONNECT', '812');
             
-            wifi.classList.remove('wifi-on');
-            wifi.classList.add('wifi-off');
+            btIcon.classList.remove('bt-on');
+            btIcon.classList.add('bt-off');
             
             dot.classList.remove('dot-alive');
             dot.classList.add('dot-offline');
