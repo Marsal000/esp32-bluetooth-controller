@@ -190,13 +190,13 @@
         
         <!-- CONNECTION STATUS BADGE -->
         <g id="connection-badge">
-            <rect id="badge-bg" x="739.941" y="39.7297" width="139.293" height="23.2443" rx="8.6548" stroke="#913BF4" stroke-width="0.49456" stroke-linecap="round"/>
+            <rect id="badge-bg" x="730" y="39.7297" width="149.293" height="23.2443" rx="8.6548" stroke="#913BF4" stroke-width="0.49456" stroke-linecap="round"/>
             
-            <g id="bluetooth-icon" transform="translate(-20, 0)">
-                <path d="M772.5 47 L781.5 55 L777 58.5 L777 43.5 L781.5 47 L772.5 55" stroke="#913BF4" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <g id="bluetooth-icon" transform="translate(-25, 0)">
+                <path d="M 775 48.35 L 781 54.35 L 778 57.35 L 778 45.35 L 781 48.35 L 775 54.35" stroke="#913BF4" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
             </g>
             
-            <text id="status-text" x="812" y="54" fill="#913BF4" font-family="'Orbitron', sans-serif" font-size="8.8" font-weight="700" letter-spacing="0.08em" text-anchor="middle">TAP TO CONNECT</text>
+            <text id="status-text" x="812" y="54" fill="#913BF4" font-family="'Orbitron', sans-serif" font-size="8.8" font-weight="700" letter-spacing="0.08em" text-anchor="middle">DISCONNECTED</text>
             <circle id="connection-dot" class="dot-offline" cx="868.353" cy="51.3523" r="3.21464" fill="#913BF4"/>
             <circle id="connection-dot-ring" cx="868.353" cy="51.3523" r="2.96736" stroke="#f43f5e" stroke-width="0.49456"/>
         </g>
@@ -358,11 +358,11 @@
 
         if (connected) {
             badge.style.opacity = '1';
-            badgeBg.setAttribute('x', '759.941');
-            badgeBg.setAttribute('width', '119.293');
+            badgeBg.setAttribute('x', '755');
+            badgeBg.setAttribute('width', '124.293');
             btIcon.style.transform = 'translate(0px, 0px)';
             
-            scrambleText(text, 'CONNECTED', '825');
+            scrambleText(text, 'CONNECTED', '822');
             
             btIcon.classList.remove('bt-off');
             btIcon.classList.add('bt-on');
@@ -372,11 +372,11 @@
             dotRing.style.stroke = '#34d399';
         } else {
             badge.style.opacity = '0.7';
-            badgeBg.setAttribute('x', '739.941');
-            badgeBg.setAttribute('width', '139.293');
-            btIcon.style.transform = 'translate(-20px, 0px)';
+            badgeBg.setAttribute('x', '730');
+            badgeBg.setAttribute('width', '149.293');
+            btIcon.style.transform = 'translate(-25px, 0px)';
             
-            scrambleText(text, 'TAP TO CONNECT', '812');
+            scrambleText(text, 'DISCONNECTED', '812');
             
             btIcon.classList.remove('bt-on');
             btIcon.classList.add('bt-off');
@@ -466,9 +466,12 @@
     }
 
     // --- Keyboard Control ---
-    window.addEventListener('keydown', (e) => {
+    window.addEventListener('keydown', async (e) => {
         if (validKeys.includes(e.key)) {
-            if (!keyState[e.key]) {
+            if (!currentConnectionState) {
+                await connectBluetooth();
+            }
+            if (!keyState[e.key] && currentConnectionState) {
                 keyState[e.key] = true;
                 updateUI(e.key, true);
                 sendCommandToESP32();
@@ -480,7 +483,7 @@
         if (validKeys.includes(e.key)) {
             keyState[e.key] = false;
             updateUI(e.key, false);
-            sendCommandToESP32();
+            if (currentConnectionState) sendCommandToESP32();
         }
     });
 
@@ -489,9 +492,15 @@
         const el = groupFor[key];
         if (!el) return;
 
-        const press = (e) => {
+        const press = async (e) => {
             if (e && e.cancelable) e.preventDefault(); 
-            if (!keyState[key]) {
+            
+            // Auto-connect if not connected when a button is pressed
+            if (!currentConnectionState) {
+                await connectBluetooth();
+            }
+
+            if (!keyState[key] && currentConnectionState) {
                 keyState[key] = true;
                 updateUI(key, true);
                 sendCommandToESP32();
@@ -502,7 +511,7 @@
             if (keyState[key]) {
                 keyState[key] = false;
                 updateUI(key, false);
-                sendCommandToESP32();
+                if (currentConnectionState) sendCommandToESP32();
             }
         };
 
