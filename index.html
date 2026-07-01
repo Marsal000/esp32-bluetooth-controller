@@ -288,12 +288,12 @@
     // --------------------------------------------------------
     
     // Standard Nordic UART Service (NUS) UUIDs
-    // Very common for BLE serial communication on ESP32
     const BLE_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
     const BLE_RX_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // Where we write data TO the ESP32
 
-    let bluetoothDevice;
-    let rxCharacteristic;
+    let bluetoothDevice = null;
+    let rxCharacteristic = null;
+    let supportsWriteWithoutResponse = false;
 
     // --------------------------------------------------------
     // HARDWARE MAPPING
@@ -389,42 +389,60 @@
 
     // --- BLUETOOTH CONNECTION LOGIC ---
     async function connectBluetooth() {
-        if (currentConnectionState) {
-            // If already connected, do nothing or prompt disconnect
-            return;
+        if (currentConnectionState) return; // already connected
+
+        // If we already picked a device this session, try a silent
+        // reconnect first instead of popping the chooser dialog again.
+        if (bluetoothDevice && bluetoothDevice.gatt) {
+            try {
+                console.log('Attempting silent reconnect to previously selected device...');
+                await bindToDevice(bluetoothDevice);
+                return;
+            } catch (err) {
+                console.warn('Silent reconnect failed, falling back to device picker.', err);
+            }
         }
 
         try {
             console.log('Requesting Bluetooth Device...');
-            // Prompts user to select a device containing our specific service
-            bluetoothDevice = await navigator.bluetooth.requestDevice({
-                filters: [{ services: [BLE_SERVICE_UUID] }],
-                // Alternatively, if you want to filter by name instead:
-                // filters: [{ namePrefix: 'ESP32' }],
+            const device = await navigator.bluetooth.requestDevice({
+                filters: [{ services: [BLE_SERVICE_UUID] }]
+                // Alternatively, filter by name instead:
+                // filters: [{ namePrefix: 'Controller_V2' }],
                 // optionalServices: [BLE_SERVICE_UUID]
             });
 
-            bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
-
-            console.log('Connecting to GATT Server...');
-            const server = await bluetoothDevice.gatt.connect();
-
-            console.log('Getting Service...');
-            const service = await server.getPrimaryService(BLE_SERVICE_UUID);
-
-            console.log('Getting Characteristic...');
-            rxCharacteristic = await service.getCharacteristic(BLE_RX_UUID);
-
-            console.log('Bluetooth connected successfully!');
-            setStatus(true);
-            
-            // Send initial stop command to make sure everything is off
-            sendCommandToESP32();
+            await bindToDevice(device);
 
         } catch (error) {
             console.error('Connection failed!', error);
             setStatus(false);
         }
+    }
+
+    async function bindToDevice(device) {
+        bluetoothDevice = device;
+        bluetoothDevice.removeEventListener('gattserverdisconnected', onDisconnected);
+        bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+        console.log('Connecting to GATT Server...');
+        const server = await bluetoothDevice.gatt.connect();
+
+        console.log('Getting Service...');
+        const service = await server.getPrimaryService(BLE_SERVICE_UUID);
+
+        console.log('Getting Characteristic...');
+        rxCharacteristic = await service.getCharacteristic(BLE_RX_UUID);
+
+        // writeValueWithoutResponse() is the modern replacement for the
+        // deprecated writeValue(); fall back if the browser is old.
+        supportsWriteWithoutResponse = typeof rxCharacteristic.writeValueWithoutResponse === 'function';
+
+        console.log('Bluetooth connected successfully! writeWithoutResponse supported:', supportsWriteWithoutResponse);
+        setStatus(true);
+
+        // Send an initial "all off" command so the board's state matches the UI
+        sendCommandToESP32();
     }
 
     function onDisconnected() {
@@ -439,23 +457,31 @@
 
     // --- COMMAND SENDING ---
     async function sendCommandToESP32() {
-        if (!rxCharacteristic) return; // Don't send if not connected
+        if (!rxCharacteristic) {
+            console.warn('sendCommandToESP32 skipped: not connected');
+            return;
+        }
 
         const l1 = keyState.ArrowUp ? 1 : 0;
         const l2 = keyState.ArrowDown ? 1 : 0;
         const l3 = keyState.ArrowLeft ? 1 : 0;
         const l4 = keyState.ArrowRight ? 1 : 0;
 
-        // Create a simple string format: "L1,L2,L3,L4\n"
-        // Example output: "1,0,0,0\n"
+        // Format: "L1,L2,L3,L4\n" e.g. "1,0,0,0\n"
         const cmdString = `${l1},${l2},${l3},${l4}\n`;
         const encoder = new TextEncoder();
-        
+        const payload = encoder.encode(cmdString);
+
+        console.log('Sending command:', cmdString.trim());
+
         try {
-            await rxCharacteristic.writeValue(encoder.encode(cmdString));
+            if (supportsWriteWithoutResponse) {
+                await rxCharacteristic.writeValueWithoutResponse(payload);
+            } else {
+                await rxCharacteristic.writeValue(payload);
+            }
         } catch (err) {
-            console.error("Write error:", err);
-            // If write fails repeatedly, it usually means device disconnected unexpectedly
+            console.error('Write error (device may have disconnected):', err);
         }
     }
 
@@ -495,7 +521,6 @@
         const press = async (e) => {
             if (e && e.cancelable) e.preventDefault(); 
             
-            // Auto-connect if not connected when a button is pressed
             if (!currentConnectionState) {
                 await connectBluetooth();
             }
