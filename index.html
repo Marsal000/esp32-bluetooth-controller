@@ -1,554 +1,586 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#03051D">
-<title>Controller V2 — Bluetooth LE</title>
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
-<style>
-    :root {
-        --bg: #03051D;
-        --panel: #060728;
-        --accent: #913BF4;
-        --accent-soft: #6934F5;
-    }
-    
-    * { 
-        box-sizing: border-box; 
-        -webkit-tap-highlight-color: transparent; 
-    }
-    
-    html, body {
-        margin: 0;
-        padding: 0;
-        background: var(--bg);
-        color: #e4e0f7;
-        font-family: 'Rajdhani', sans-serif;
-        min-height: 100vh;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Oscilloscope - Scoppy Style</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&display=swap');
+        
+        body {
+            background-color: #000000;
+            color: #d1d5db;
+            font-family: 'Roboto', sans-serif;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            height: 100dvh;
+            overscroll-behavior: none;
+        }
 
-    body {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 40px 20px; 
-    }
+        .font-osd {
+            font-family: 'Roboto Mono', monospace;
+        }
 
-    .controller-wrap {
-        width: 100%;
-        max-width: 1200px; 
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e1e1e; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
 
-    svg {
-        width: 100%;
-        height: auto; 
-        display: block;
-        filter: drop-shadow(0 15px 35px rgba(0,0,0,0.6));
-    }
+        .btn-ui {
+            background-color: #374151;
+            color: #e5e7eb;
+            border-radius: 4px;
+            text-align: center;
+            font-weight: 500;
+            font-size: 0.75rem;
+            transition: background-color 0.1s;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 32px;
+        }
+        .btn-ui:hover { background-color: #4b5563; }
+        .btn-ui:active { background-color: #1f2937; }
+        
+        /* Active States */
+        .tab-active { color: #fbbf24; }
+        .border-active-green { border-bottom: 3px solid #10b981; }
+        .border-active-purple { border-bottom: 3px solid #8b5cf6; }
 
-    /* ==========================================
-       PORTRAIT / ROTATE PROMPT
-       ========================================== */
-    .rotate-prompt {
-        display: none;
-        position: fixed;
-        inset: 0;
-        z-index: 20;
-        background: var(--bg);
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 18px;
-        padding: 24px;
-        text-align: center;
-    }
-    .rotate-prompt .phone-icon {
-        width: 56px;
-        height: 56px;
-        color: var(--accent);
-        animation: rotate-hint 1.6s ease-in-out infinite;
-    }
-    .rotate-prompt p {
-        margin: 0;
-        max-width: 260px;
-        font-family: 'Orbitron', sans-serif;
-        font-size: 13px;
-        font-weight: 600;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--accent);
-        line-height: 1.6;
-    }
-    @keyframes rotate-hint {
-        0%, 15% { transform: rotate(0deg); }
-        50%, 65% { transform: rotate(90deg); }
-        100% { transform: rotate(90deg); }
-    }
-    
-    @media (orientation: portrait) {
-        .controller-wrap { display: none; }
-        .rotate-prompt { display: flex; }
-    }
-
-    /* Interactive control clusters */
-    .ctrl-btn { cursor: pointer; }
-    .ctrl-btn .hit { fill: transparent; }
-    .ctrl-btn path { transition: fill-opacity 0.1s ease, stroke-opacity 0.1s ease, opacity 0.1s ease, stroke 0.1s ease, fill 0.1s ease; }
-
-    /* BUTTON ACTIVE STATES */
-    .ctrl-btn.active { filter: url(#pressedGlow); }
-    .ctrl-btn.active .bg-wash { opacity: 0; fill-opacity: 0; }
-    .ctrl-btn.active .accent-fill { opacity: 0; fill-opacity: 0; }
-    .ctrl-btn.active .border-ring { 
-        fill: transparent; 
-        stroke-opacity: 1; 
-    }
-    .ctrl-btn.active .accent-stroke { stroke-opacity: 1; }
-    .ctrl-btn.active .chevron-mark { fill-opacity: 1; }
-
-    /* =========================================
-       DYNAMIC CONNECTION STATUS STYLES 
-       ========================================= */
-    #connection-badge { 
-        transition: opacity 0.4s ease; 
-        cursor: pointer; /* Added cursor to show it's clickable */
-    }
-    #connection-badge:hover {
-        filter: brightness(1.3);
-    }
-    #badge-bg { transition: all 0.4s ease; }
-    #bluetooth-icon { transition: transform 0.4s ease; }
-    #connection-dot-ring { transition: stroke 0.4s ease; }
-    
-    @keyframes flicker-on {
-        0% { opacity: 0.3; filter: drop-shadow(0 0 0px #913BF4); }
-        10% { opacity: 1; filter: drop-shadow(0 0 5px #913BF4); }
-        20% { opacity: 0.3; filter: drop-shadow(0 0 0px #913BF4); }
-        40% { opacity: 1; filter: drop-shadow(0 0 8px #913BF4); }
-        50% { opacity: 0.3; }
-        100% { opacity: 1; filter: drop-shadow(0 0 2px #913BF4); }
-    }
-    @keyframes flicker-off {
-        0% { opacity: 1; filter: drop-shadow(0 0 5px #913BF4); }
-        10% { opacity: 0.1; }
-        20% { opacity: 1; filter: drop-shadow(0 0 5px #913BF4); }
-        40% { opacity: 0.1; }
-        50% { opacity: 0.6; }
-        100% { opacity: 0.3; filter: drop-shadow(0 0 0px #913BF4); }
-    }
-    .bt-on { animation: flicker-on 0.4s forwards; }
-    .bt-off { animation: flicker-off 0.4s forwards; }
-
-    @keyframes pulse-alive {
-        0% { filter: drop-shadow(0 0 2px #34d399); }
-        50% { filter: drop-shadow(0 0 6px #34d399) drop-shadow(0 0 10px #34d399); }
-        100% { filter: drop-shadow(0 0 2px #34d399); }
-    }
-    .dot-alive {
-        fill: #34d399 !important;
-        animation: pulse-alive 1.5s infinite ease-in-out;
-    }
-    .dot-offline {
-        fill: #f43f5e !important;
-        filter: drop-shadow(0 0 5px rgba(244,63,94,0.8));
-    }
-</style>
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
 </head>
-<body>
+<body class="w-screen flex flex-col landscape:flex-row">
 
-    <div class="rotate-prompt" id="rotatePrompt">
-        <svg class="phone-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="6" y="2" width="12" height="20" rx="2.2" stroke="currentColor" stroke-width="1.6"/>
-            <line x1="10" y1="19" x2="14" y2="19" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-        </svg>
-        <p>Rotate your device to landscape for the best controller experience</p>
-    </div>
-
-    <div class="controller-wrap">
-        <svg viewBox="0 0 912 420" fill="none" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-            <filter id="pressedGlow" x="-20%" y="-20%" width="140%" height="140%">
-                <feGaussianBlur in="SourceAlpha" stdDeviation="5" result="blur" />
-                <feFlood flood-color="#913BF4" flood-opacity="0.6" result="glowColor" />
-                <feComposite in="glowColor" in2="blur" operator="in" result="glow" />
-                <feMerge>
-                    <feMergeNode in="glow" />
-                    <feMergeNode in="SourceGraphic" />
-                </feMerge>
-            </filter>
-            <clipPath id="clip0_893_912"><rect width="912" height="420" fill="white"/></clipPath>
-            <clipPath id="clip1_893_912"><rect width="18" height="18" fill="white" transform="translate(75 44)"/></clipPath>
-        </defs>
-
-        <g clip-path="url(#clip0_893_912)">
-        <rect width="420" height="912" transform="matrix(0 1 -1 0 912 0)" fill="#03051D"/>
-        <path d="M188.477 30.086H46.7859C28.2399 30.086 22.0575 40.7191 22.0579 57.2869V227.416C21.6411 249.139 23.4734 255.28 27.4981 264.013C43.1754 294.26 54.6643 310.273 76.9541 338.197C104.793 371.148 125.183 383.078 172.899 388.642C226.902 393.691 249.491 392.037 277.993 382.213C314.535 368.298 336.265 364.316 376.41 361.441C428.304 357.772 457.636 358.814 509.076 360.642L510.683 360.7C557.952 360.835 583.355 364.506 625.916 379.74C654.611 390.578 673.208 393.317 711.227 391.61C770.821 388.641 799.735 380.234 831.653 342.895C850.447 320.909 861.573 305.06 875.669 280.828C885.594 263.765 890.232 257.159 891 233.845V58.276C891 44.4272 886.796 29.0969 863.305 29.0969H773.542C688.477 24.1503 676.36 36.9829 646.934 46.6538C595.77 63.4683 557.992 68.2961 480.515 69.6508L413.502 68.909C359.347 68.909 303.957 60.4284 265.629 46.9011C236.202 36.5153 217.903 30.086 188.477 30.086Z" fill="#060728" stroke="#903BFC" stroke-width="0.49456"/>
+    <!-- Main Oscilloscope Area -->
+    <main class="flex-1 flex flex-col relative h-[60dvh] landscape:h-full min-w-0">
         
-        <!-- CONNECTION STATUS BADGE -->
-        <g id="connection-badge">
-            <rect id="badge-bg" x="730" y="39.7297" width="149.293" height="23.2443" rx="8.6548" stroke="#913BF4" stroke-width="0.49456" stroke-linecap="round"/>
+        <!-- Top Info Bar -->
+        <div class="h-8 bg-[#111111] border-b border-gray-800 flex justify-between items-center px-4 font-osd text-xs text-gray-400">
+            <div class="flex gap-6">
+                <span id="top-samplerate">-- kS/s</span>
+                <span class="hidden sm:inline">400 pts</span>
+            </div>
+            <div class="flex gap-4 items-center">
+                <div class="w-16 h-1 bg-gray-600 rounded-full relative hidden sm:block">
+                    <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-3 bg-gray-300"></div>
+                </div>
+                <span id="top-timediv">500us/div</span>
+                <span id="top-trigoffset" class="hidden sm:inline">+0.0 divs</span>
+                <button id="btn-fullscreen" class="text-gray-500 hover:text-white ml-1 p-1 rounded hover:bg-gray-800" title="Toggle Fullscreen">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Canvas Container -->
+        <div class="flex-1 relative bg-[#0a0a0a]">
+            <canvas id="scopeCanvas"></canvas>
             
-            <g id="bluetooth-icon" transform="translate(-25, 0)">
-                <path d="M 775 48.35 L 781 54.35 L 778 57.35 L 778 45.35 L 781 48.35 L 775 54.35" stroke="#913BF4" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-            </g>
+            <!-- Trigger Status Text (Top Right) -->
+            <div class="absolute top-2 right-4 text-right font-osd text-xs">
+                <div class="text-red-500 font-bold mb-1">▲T</div>
+                <div id="osd-runstate" class="text-gray-300">STOPPED</div>
+            </div>
+
+            <!-- OSD Stats (Bottom Left) -->
+            <div class="absolute bottom-4 left-4 font-osd text-xs leading-tight pointer-events-none">
+                <div class="text-yellow-400 mb-1">CH1</div>
+                <div class="text-gray-300">Vmin: <span id="osd-vmin">+0.00</span></div>
+                <div class="text-gray-300">Vmax: <span id="osd-vmax">+0.00</span></div>
+                <div class="text-gray-300">Vpp:  <span id="osd-vpp">+0.00</span></div>
+                <div class="text-gray-300">Freq: <span id="osd-freq">-- Hz</span></div>
+            </div>
+
+            <!-- Connect Overlay -->
+            <div id="connectOverlay" class="absolute inset-0 bg-black/60 flex items-center justify-center z-50">
+                <div class="bg-[#1e1e1e] border border-gray-700 p-6 rounded shadow-2xl text-center max-w-sm mx-4">
+                    <h2 class="text-white text-lg font-bold mb-2">Device Disconnected</h2>
+                    <p class="text-gray-400 text-sm mb-6">Click below to pair with your ESP32 via Web Bluetooth.</p>
+                    <button id="connectBtn" class="bg-gray-100 text-black hover:bg-gray-300 font-bold py-3 px-6 rounded transition w-full shadow-lg">
+                        CONNECT DEVICE
+                    </button>
+                    <p id="connStatus" class="text-xs text-gray-500 mt-4"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Bar -->
+        <div class="h-10 bg-[#111111] border-t border-gray-800 flex items-center px-2 gap-2 font-osd text-xs overflow-x-auto whitespace-nowrap">
+            <div class="bg-gray-200 text-black px-2 py-1 flex items-center font-bold rounded-sm">Demo <span class="bg-white px-1 ml-1 text-black text-[10px] rounded-sm">OK</span></div>
+            <div class="bg-yellow-400 text-black px-2 py-1 font-bold flex items-center gap-2 rounded-sm">CH1 <span id="btm-voltsdiv" class="font-normal text-gray-800">1.00V/div</span></div>
+            <div class="bg-[#333] text-gray-400 px-2 py-1 rounded-sm">CH2 <span class="text-gray-500 ml-2">OFF</span></div>
+            <div class="bg-gray-200 text-black px-2 py-1 flex items-center gap-2 font-bold rounded-sm">TRIG <span id="btm-triglevel" class="font-normal text-gray-800">1.65V</span></div>
+            <div class="ml-auto text-gray-500 pr-2" id="stat-fps">FPS: 0</div>
+        </div>
+    </main>
+
+    <!-- Right Control Panel -->
+    <aside class="w-full landscape:w-[260px] lg:landscape:w-[320px] bg-[#1e1e1e] border-t landscape:border-t-0 landscape:border-l border-gray-800 flex flex-col h-[40dvh] landscape:h-full overflow-y-auto">
+        
+        <!-- Top Buttons -->
+        <div class="flex p-2 gap-2 border-b border-gray-700 shrink-0">
+            <button id="btn-runstop" class="flex-1 bg-[#2a2a2a] text-white font-bold py-2 text-sm border-active-green hover:bg-[#333]">STOP</button>
+            <button class="flex-1 bg-[#2a2a2a] text-white font-bold py-2 text-sm border-active-purple hover:bg-[#333]">MENU >></button>
+        </div>
+
+        <div class="p-4 flex flex-col gap-6">
             
-            <text id="status-text" x="812" y="54" fill="#913BF4" font-family="'Orbitron', sans-serif" font-size="8.8" font-weight="700" letter-spacing="0.08em" text-anchor="middle">DISCONNECTED</text>
-            <circle id="connection-dot" class="dot-offline" cx="868.353" cy="51.3523" r="3.21464" fill="#913BF4"/>
-            <circle id="connection-dot-ring" cx="868.353" cy="51.3523" r="2.96736" stroke="#f43f5e" stroke-width="0.49456"/>
-        </g>
+            <!-- Horizontal Section -->
+            <section>
+                <h3 class="text-gray-400 text-xs mb-3">Horizontal</h3>
+                <div class="grid grid-cols-[1fr_2fr_1fr] gap-2 mb-2">
+                    <button class="btn-ui text-lg" id="btn-time-minus">-</button>
+                    <div class="btn-ui bg-[#2a2a2a] pointer-events-none">TIME/DIV</div>
+                    <button class="btn-ui text-lg" id="btn-time-plus">+</button>
+                </div>
+                <div class="grid grid-cols-[1fr_2fr_1fr] gap-2">
+                    <button class="btn-ui text-lg">-</button>
+                    <div class="btn-ui bg-[#2a2a2a] pointer-events-none text-gray-500">POSITION</div>
+                    <button class="btn-ui text-lg">+</button>
+                </div>
+            </section>
+
+            <hr class="border-gray-700">
+
+            <!-- Vertical Section -->
+            <section>
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-gray-400 text-xs">Vertical</h3>
+                    <div class="flex gap-2">
+                        <button class="btn-ui bg-[#2a2a2a] w-12 tab-active border-b-2 border-yellow-400">CH1</button>
+                        <button class="btn-ui bg-[#2a2a2a] w-12 text-gray-500">CH2</button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-[1fr_2fr_1fr] gap-2 mb-2">
+                    <button class="btn-ui text-lg" id="btn-volt-minus">-</button>
+                    <div class="btn-ui bg-[#2a2a2a] pointer-events-none">VOLTS/DIV</div>
+                    <button class="btn-ui text-lg" id="btn-volt-plus">+</button>
+                </div>
+                <div class="grid grid-cols-[1fr_2fr_1fr] gap-2">
+                    <button class="btn-ui text-lg" id="btn-vpos-minus">-</button>
+                    <div class="btn-ui bg-[#2a2a2a] pointer-events-none">POSITION</div>
+                    <button class="btn-ui text-lg" id="btn-vpos-plus">+</button>
+                </div>
+            </section>
+
+            <hr class="border-gray-700">
+
+            <!-- Trigger Section -->
+            <section>
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-gray-400 text-xs">Trigger</h3>
+                    <div class="flex gap-2">
+                        <button class="btn-ui bg-[#2a2a2a] w-12 tab-active border-b-2 border-yellow-400">CH1</button>
+                        <button class="btn-ui bg-[#2a2a2a] w-12 text-gray-500">CH2</button>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-3 gap-2 mb-3">
+                    <button class="btn-ui" id="btn-trig-none">NONE</button>
+                    <button class="btn-ui border-active-green" id="btn-trig-auto">AUTO</button>
+                    <button class="btn-ui" id="btn-trig-norm">NORM</button>
+                </div>
+
+                <div class="grid grid-cols-[1fr_2fr_1fr] gap-2 mb-3">
+                    <button class="btn-ui text-lg" id="btn-trigl-minus">-</button>
+                    <div class="btn-ui bg-[#2a2a2a] pointer-events-none">LEVEL</div>
+                    <button class="btn-ui text-lg" id="btn-trigl-plus">+</button>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <button class="btn-ui border-active-green" id="btn-edge-rise">RISING EDGE</button>
+                    <button class="btn-ui" id="btn-edge-fall">FALLING EDGE</button>
+                </div>
+            </section>
+        </div>
+    </aside>
+
+    <script>
+        // --- Web Bluetooth Variables ---
+        const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+        const RX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+        const TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+        let rxCharacteristic = null, txCharacteristic = null, bleDevice = null;
+        const BUFFER_SIZE = 400; // Matches ESP32 BLE code
+
+        // --- Scope State & UI Settings ---
+        let isPaused = true; 
         
-        <path d="M69.8791 47.9307H68.0932C67.6 47.9307 67.2002 48.3305 67.2002 48.8236V55.9673C67.2002 56.4604 67.6 56.8602 68.0932 56.8602H69.8791C70.3722 56.8602 70.772 56.4604 70.772 55.9673V48.8236C70.772 48.3305 70.3722 47.9307 69.8791 47.9307Z" fill="#913BF4"/>
-        <path d="M45.7686 47.9307H50.2333V56.8602H45.7686V47.9307ZM51.5728 47.9307H56.0375V56.8602H51.5728V47.9307ZM57.377 47.9307H61.8418V56.8602H57.377V47.9307Z" fill="#913BF4"/>
-        <path fill-rule="evenodd" clip-rule="evenodd" d="M63.6286 44.3604H43.9836C43.2731 44.3604 42.5917 44.6426 42.0893 45.145C41.5869 45.6474 41.3047 46.3287 41.3047 47.0392V57.7547C41.3047 58.4652 41.5869 59.1466 42.0893 59.6489C42.5917 60.1513 43.2731 60.4336 43.9836 60.4336H63.6286C64.3391 60.4336 65.0204 60.1513 65.5228 59.6489C66.0252 59.1466 66.3074 58.4652 66.3074 57.7547V47.0392C66.3074 46.3287 66.0252 45.6474 65.5228 45.145C65.0204 44.6426 64.3391 44.3604 63.6286 44.3604ZM43.0906 47.0392C43.0906 46.8024 43.1847 46.5753 43.3521 46.4078C43.5196 46.2403 43.7467 46.1463 43.9836 46.1463H63.6286C63.8654 46.1463 64.0925 46.2403 64.26 46.4078C64.4275 46.5753 64.5215 46.8024 64.5215 47.0392V57.7547C64.5215 57.9915 64.4275 58.2186 64.26 58.3861C64.0925 58.5536 63.8654 58.6476 63.6286 58.6476H43.9836C43.7467 58.6476 43.5196 58.5536 43.3521 58.3861C43.1847 58.2186 43.0906 57.9915 43.0906 57.7547V47.0392Z" fill="#913BF4"/>
-        
-        <g clip-path="url(#clip1_893_912)">
-        <path d="M83.496 55.2979H80.1475L84.8355 45.9219V51.2796H88.1841L83.496 60.6556V55.2979Z" fill="#913BF4"/>
-        </g>
-        <path d="M98.1659 57.1767V47.7921L95.7424 48.6859V47.2937L97.994 46.4343H99.6269V57.1767H101.5V58.4658H95.9143V57.1767H98.1659ZM110.972 55.5439C110.972 56.4949 110.708 57.2226 110.181 57.7267C109.665 58.2195 108.966 58.4658 108.084 58.4658H107.74C106.858 58.4658 106.153 58.2195 105.626 57.7267C105.111 57.2226 104.853 56.4949 104.853 55.5439V49.3562C104.853 48.3937 105.111 47.6661 105.626 47.1734C106.142 46.6806 106.846 46.4343 107.74 46.4343H108.084C108.978 46.4343 109.682 46.6806 110.198 47.1734C110.714 47.6661 110.972 48.3937 110.972 49.3562V55.5439ZM109.511 49.0297C109.511 48.6744 109.373 48.3708 109.098 48.1187C108.835 47.8552 108.497 47.7234 108.084 47.7234H107.74C107.328 47.7234 106.984 47.8552 106.709 48.1187C106.445 48.3708 106.314 48.6744 106.314 49.0297V53.6876L109.511 49.0297ZM106.314 55.8704C106.314 56.2257 106.445 56.535 106.709 56.7986C106.984 57.0507 107.328 57.1767 107.74 57.1767H108.084C108.497 57.1767 108.835 57.0507 109.098 56.7986C109.373 56.535 109.511 56.2257 109.511 55.8704V51.2297L106.314 55.8704ZM120.254 55.5439C120.254 56.4949 119.99 57.2226 119.463 57.7267C118.947 58.2195 118.248 58.4658 117.366 58.4658H117.022C116.14 58.4658 115.435 58.2195 114.908 57.7267C114.393 57.2226 114.135 56.4949 114.135 55.5439V49.3562C114.135 48.3937 114.393 47.6661 114.908 47.1734C115.424 46.6806 116.129 46.4343 117.022 46.4343H117.366C118.26 46.4343 118.965 46.6806 119.48 47.1734C119.996 47.6661 120.254 48.3937 120.254 49.3562V55.5439ZM118.793 49.0297C118.793 48.6744 118.655 48.3708 118.38 48.1187C118.117 47.8552 117.779 47.7234 117.366 47.7234H117.022C116.61 47.7234 116.266 47.8552 115.991 48.1187C115.728 48.3708 115.596 48.6744 115.596 49.0297V53.6876L118.793 49.0297ZM115.596 55.8704C115.596 56.2257 115.728 56.535 115.991 56.7986C116.266 57.0507 116.61 57.1767 117.022 57.1767H117.366C117.779 57.1767 118.117 57.0507 118.38 56.7986C118.655 56.535 118.793 56.2257 118.793 55.8704V51.2297L115.596 55.8704ZM126.803 49.3219C126.803 50.0437 126.62 50.5938 126.253 50.9719C125.886 51.3386 125.371 51.5219 124.706 51.5219H124.569C123.904 51.5219 123.388 51.3386 123.022 50.9719C122.655 50.5938 122.472 50.0437 122.472 49.3219V48.6343C122.472 47.9124 122.655 47.3682 123.022 47.0015C123.388 46.6234 123.904 46.4343 124.569 46.4343H124.706C125.371 46.4343 125.886 46.6234 126.253 47.0015C126.62 47.3682 126.803 47.9124 126.803 48.6343V49.3219ZM125.6 48.4453C125.6 48.1588 125.525 47.9239 125.376 47.7406C125.227 47.5572 125.004 47.4656 124.706 47.4656H124.569C124.271 47.4656 124.047 47.5572 123.898 47.7406C123.749 47.9239 123.675 48.1588 123.675 48.4453V49.5109C123.675 49.7974 123.749 50.0323 123.898 50.2156C124.047 50.399 124.271 50.4906 124.569 50.4906H124.706C125.004 50.4906 125.227 50.399 125.376 50.2156C125.525 50.0323 125.6 49.7974 125.6 49.5109V48.4453ZM130.894 51.3157V52.3813L122.042 53.636V52.5704L130.894 51.3157ZM130.412 56.2658C130.412 56.9877 130.229 57.5377 129.862 57.9158C129.496 58.2825 128.98 58.4658 128.316 58.4658H128.178C127.513 58.4658 126.998 58.2825 126.631 57.9158C126.264 57.5377 126.081 56.9877 126.081 56.2658V55.5783C126.081 54.8564 126.264 54.3121 126.631 53.9454C126.998 53.5673 127.513 53.3782 128.178 53.3782H128.316C128.98 53.3782 129.496 53.5673 129.862 53.9454C130.229 54.3121 130.412 54.8564 130.412 55.5783V56.2658ZM129.209 55.3892C129.209 55.1027 129.135 54.8678 128.986 54.6845C128.837 54.5011 128.613 54.4095 128.316 54.4095H128.178C127.88 54.4095 127.657 54.5011 127.508 54.6845C127.359 54.8678 127.284 55.1027 127.284 55.3892V56.4548C127.284 56.7413 127.359 56.9762 127.508 57.1595C127.657 57.3429 127.88 57.4345 128.178 57.4345H128.316C128.613 57.4345 128.837 57.3429 128.986 57.1595C129.135 56.9762 129.209 56.7413 129.209 56.4548V55.3892Z" fill="#913BF4"/>
+        // Timebase arrays (Microseconds per sample delay sent to ESP32)
+        const timeSettings = [10, 25, 50, 100, 250, 500, 1000, 2500];
+        const timeLabels = ["100us/div", "250us/div", "500us/div", "1ms/div", "2.5ms/div", "5ms/div", "10ms/div", "25ms/div"];
+        let timeIdx = 2; // Default 50us (500us/div)
 
-        <!-- LEFT control cluster -->
-        <g id="ctrl-left" class="ctrl-btn">
-            <path class="bg-wash" d="M195.265 290.897C195.265 296.112 191.028 300.387 185.838 299.876C176.425 298.951 167.181 296.641 158.411 293.008C146.727 288.168 136.11 281.075 127.168 272.132C118.225 263.19 111.131 252.573 106.292 240.889C101.452 229.205 98.9609 216.682 98.9609 204.035C98.9609 191.388 101.452 178.865 106.292 167.181C111.131 155.497 118.225 144.881 127.168 135.938C136.11 126.996 146.727 119.902 158.411 115.062C167.181 111.429 176.425 109.12 185.838 108.194C191.028 107.683 195.265 111.959 195.265 117.173L195.265 170.986C195.265 173.072 193.567 174.738 191.498 175.006C188.949 175.337 186.448 176.003 184.063 176.991C180.511 178.462 177.284 180.618 174.566 183.336C171.848 186.055 169.692 189.282 168.22 192.833C166.749 196.385 165.992 200.191 165.992 204.035C165.992 207.879 166.749 211.686 168.22 215.237C169.692 218.789 171.848 222.016 174.566 224.734C177.284 227.452 180.511 229.608 184.063 231.079C186.448 232.067 188.949 232.733 191.498 233.064C193.567 233.333 195.265 234.998 195.265 237.084V290.897Z" fill="#6934F5" fill-opacity="0.08"/>
-            <path class="border-ring" d="M100.602 204.035C100.602 216.466 103.05 228.776 107.808 240.261C112.565 251.746 119.538 262.181 128.328 270.972C137.118 279.762 147.554 286.735 159.039 291.492C167.66 295.063 176.746 297.333 185.999 298.243C190.115 298.648 193.624 295.254 193.624 290.897V237.084C193.624 235.949 192.67 234.871 191.287 234.691C188.595 234.342 185.954 233.638 183.435 232.595C179.684 231.041 176.277 228.764 173.406 225.894C170.536 223.023 168.259 219.616 166.705 215.865C165.152 212.115 164.352 208.095 164.352 204.035C164.352 199.976 165.152 195.956 166.705 192.205C168.259 188.455 170.536 185.047 173.406 182.177C176.277 179.306 179.684 177.029 183.435 175.476C185.954 174.432 188.595 173.728 191.287 173.379C192.67 173.2 193.624 172.121 193.624 170.986V117.173C193.624 112.816 190.115 109.422 185.999 109.827C176.746 110.737 167.66 113.007 159.039 116.578C147.554 121.335 137.118 128.308 128.328 137.099C119.538 145.889 112.565 156.325 107.808 167.81C103.05 179.295 100.602 191.604 100.602 204.035Z" stroke="#913BF4" stroke-opacity="0.5" stroke-width="3.28132"/>
-            <path class="accent-fill" d="M185.491 199.255C183.694 200.765 183.694 203.53 185.491 205.04L191.42 210.019C193.877 212.082 197.625 210.336 197.625 207.127V197.168C197.625 193.959 193.877 192.213 191.42 194.276L185.491 199.255Z" fill="#4B3BF4" fill-opacity="0.19"/>
-            <path class="accent-stroke" d="M186.098 199.979C184.75 201.11 184.75 203.184 186.098 204.316L192.027 209.296C193.87 210.843 196.682 209.533 196.682 207.127V197.168C196.682 194.762 193.87 193.452 192.027 194.999L186.098 199.979Z" stroke="#913BF4" stroke-opacity="0.5" stroke-width="1.88831"/>
-            <path class="chevron-mark" fill-rule="evenodd" clip-rule="evenodd" d="M79.9852 201.73L85.2473 196.468C85.6623 196.053 86.3353 196.053 86.7504 196.468C87.1655 196.883 87.1655 197.556 86.7504 197.971L82.7715 201.95C82.4779 202.244 82.4779 202.72 82.7715 203.013L86.7504 206.992C87.1655 207.407 87.1655 208.08 86.7504 208.496C86.3353 208.911 85.6623 208.911 85.2473 208.496L79.9852 203.233C79.7859 203.034 79.674 202.764 79.674 202.482C79.674 202.2 79.7859 201.93 79.9852 201.73Z" fill="#913BF4" fill-opacity="0.5"/>
-            <circle class="hit" cx="140" cy="203" r="70"/>
-        </g>
+        // Vertical Scale (Handled purely in frontend rendering)
+        const voltSettings = [0.1, 0.2, 0.5, 1.0, 2.0];
+        let voltIdx = 3; // Default 1.0V / div
+        let verticalOffset = 0; // divisions
 
-        <!-- RIGHT control cluster -->
-        <g id="ctrl-right" class="ctrl-btn">
-            <path class="bg-wash" d="M206.911 289.413C206.911 294.627 211.148 298.902 216.338 298.392C225.751 297.466 234.994 295.157 243.765 291.524C255.449 286.684 266.066 279.59 275.008 270.648C283.951 261.705 291.044 251.089 295.884 239.405C300.724 227.72 303.215 215.198 303.215 202.551C303.215 189.904 300.724 177.381 295.884 165.697C291.044 154.013 283.951 143.396 275.008 134.454C266.066 125.511 255.449 118.417 243.765 113.578C234.994 109.945 225.751 107.635 216.338 106.71C211.148 106.199 206.911 110.474 206.911 115.689L206.911 169.502C206.911 171.587 208.609 173.253 210.677 173.522C213.227 173.852 215.728 174.518 218.113 175.507C221.665 176.978 224.892 179.134 227.61 181.852C230.328 184.57 232.484 187.797 233.955 191.349C235.426 194.9 236.184 198.707 236.184 202.551C236.184 206.395 235.426 210.201 233.955 213.753C232.484 217.304 230.328 220.531 227.61 223.25C224.892 225.968 221.665 228.124 218.113 229.595C215.728 230.583 213.227 231.249 210.677 231.58C208.609 231.848 206.911 233.514 206.911 235.6V289.413Z" fill="#6934F5" fill-opacity="0.08"/>
-            <path class="border-ring" d="M301.574 202.551C301.574 214.982 299.125 227.291 294.368 238.776C289.611 250.261 282.638 260.697 273.848 269.487C265.057 278.278 254.622 285.251 243.137 290.008C234.516 293.579 225.43 295.849 216.177 296.759C212.06 297.164 208.552 293.77 208.552 289.413V235.6C208.552 234.465 209.506 233.386 210.889 233.207C213.581 232.858 216.222 232.154 218.741 231.11C222.492 229.557 225.899 227.28 228.77 224.409C231.64 221.539 233.917 218.131 235.471 214.381C237.024 210.63 237.824 206.61 237.824 202.551C237.824 198.491 237.024 194.471 235.471 190.721C233.917 186.97 231.64 183.563 228.77 180.692C225.899 177.822 222.492 175.545 218.741 173.991C216.222 172.948 213.581 172.244 210.889 171.895C209.506 171.715 208.552 170.637 208.552 169.502V115.688C208.552 111.332 212.06 107.938 216.177 108.343C225.43 109.253 234.516 111.523 243.137 115.094C254.622 119.851 265.057 126.824 273.848 135.614C282.638 144.405 289.611 154.84 294.368 166.325C299.125 177.81 301.574 190.12 301.574 202.551Z" stroke="#913BF4" stroke-opacity="0.5" stroke-width="3.28132"/>
-            <path class="accent-fill" d="M216.685 197.771C218.482 199.28 218.482 202.046 216.685 203.555L210.756 208.535C208.299 210.598 204.55 208.851 204.55 205.642V195.684C204.55 192.475 208.299 190.728 210.756 192.792L216.685 197.771Z" fill="#4B3BF4" fill-opacity="0.19"/>
-            <path class="accent-stroke" d="M216.078 198.494C217.426 199.626 217.426 201.7 216.078 202.832L210.148 207.812C208.306 209.359 205.494 208.049 205.494 205.643V195.684C205.494 193.277 208.306 191.967 210.148 193.515L216.078 198.494Z" stroke="#913BF4" stroke-opacity="0.5" stroke-width="1.88831"/>
-            <path class="chevron-mark" fill-rule="evenodd" clip-rule="evenodd" d="M318.646 203.643L313.384 208.905C312.969 209.32 312.296 209.32 311.88 208.905C311.465 208.49 311.465 207.817 311.88 207.402L315.859 203.423C316.153 203.129 316.153 202.653 315.859 202.36L311.88 198.381C311.465 197.966 311.465 197.293 311.88 196.878C312.296 196.462 312.969 196.462 313.384 196.878L318.646 202.14C318.845 202.339 318.957 202.609 318.957 202.891C318.957 203.173 318.845 203.443 318.646 203.643Z" fill="#913BF4" fill-opacity="0.5"/>
-            <circle class="hit" cx="260" cy="203" r="70"/>
-        </g>
+        // Trigger settings
+        let triggerLevelV = 1.65; // Volts
+        let currentEdge = 1; // 1 = Rising, 0 = Falling
 
-        <circle cx="199.852" cy="201.204" r="109.051" stroke="#7B33DA" stroke-opacity="0.5" stroke-width="0.49456"/>
-        <circle cx="198.862" cy="202.686" r="122.404" stroke="#7B33DA" stroke-opacity="0.5" stroke-width="0.49456"/>
-        <path d="M604.648 288.734C641.741 342.152 764.392 369.848 825.965 283.3C882.097 208.374 838.823 128.255 819.536 109.709C753.264 35.2778 665.48 56.7912 604.648 95.8561C548.27 123.062 376.657 119.6 318.793 99.8165C234.471 57.2857 202.82 48.3149 135.065 75.8318C53.4623 121.331 34.8974 223.971 90.2513 286.264C146.065 349.074 261.424 369.845 321.759 268.21" stroke="#2C155F" stroke-width="0.49456"/>
-        <circle cx="713.699" cy="200.214" r="122.404" stroke="#7B33DA" stroke-opacity="0.5" stroke-width="0.49456"/>
-        <circle cx="714.688" cy="200.215" r="109.051" stroke="#7B33DA" stroke-opacity="0.5" stroke-width="0.49456"/>
+        // FPS tracking
+        let frameCount = 0;
+        let lastFpsTime = performance.now();
 
-        <!-- UP control button -->
-        <g id="ctrl-up" class="ctrl-btn">
-            <path class="bg-wash" d="M800.426 197.111C805.64 197.111 809.915 192.874 809.405 187.685C808.479 178.271 806.169 169.028 802.536 160.257C797.697 148.573 790.603 137.957 781.66 129.014C772.718 120.072 762.101 112.978 750.417 108.138C738.733 103.299 726.21 100.808 713.563 100.808C700.917 100.808 688.394 103.299 676.71 108.138C665.026 112.978 654.409 120.072 645.466 129.014C636.524 137.957 629.43 148.573 624.59 160.257C620.958 169.028 618.648 178.271 617.722 187.685C617.212 192.874 621.487 197.111 626.701 197.111L680.514 197.111C682.6 197.111 684.266 195.414 684.534 193.345C684.865 190.795 685.531 188.295 686.519 185.909C687.99 182.358 690.147 179.131 692.865 176.413C695.583 173.694 698.81 171.538 702.361 170.067C705.913 168.596 709.719 167.839 713.563 167.839C717.408 167.839 721.214 168.596 724.766 170.067C728.317 171.538 731.544 173.694 734.262 176.413C736.98 179.131 739.137 182.358 740.608 185.909C741.596 188.295 742.262 190.795 742.593 193.345C742.861 195.414 744.527 197.111 746.613 197.111L800.426 197.111Z" fill="#6934F5" fill-opacity="0.08"/>
-            <path class="border-ring" d="M713.563 102.448C725.995 102.448 738.304 104.897 749.789 109.654C761.274 114.412 771.71 121.385 780.5 130.175C789.29 138.965 796.263 149.401 801.021 160.886C804.591 169.507 806.861 178.593 807.771 187.846C808.176 191.962 804.782 195.471 800.426 195.471L746.612 195.471C745.478 195.471 744.399 194.517 744.22 193.134C743.87 190.441 743.167 187.8 742.123 185.281C740.57 181.531 738.292 178.123 735.422 175.253C732.551 172.382 729.144 170.105 725.394 168.552C721.643 166.998 717.623 166.198 713.563 166.198C709.504 166.198 705.484 166.998 701.733 168.552C697.983 170.105 694.576 172.382 691.705 175.253C688.835 178.123 686.557 181.531 685.004 185.281C683.96 187.8 683.257 190.441 682.907 193.134C682.728 194.517 681.649 195.471 680.515 195.471L626.701 195.471C622.345 195.471 618.951 191.962 619.355 187.846C620.266 178.593 622.535 169.507 626.106 160.886C630.864 149.401 637.837 138.965 646.627 130.175C655.417 121.385 665.853 114.412 677.338 109.654C688.823 104.897 701.132 102.448 713.563 102.448Z" stroke="#913BF4" stroke-opacity="0.5" stroke-width="3.28132"/>
-            <path class="accent-fill" d="M708.784 187.337C710.293 185.54 713.059 185.54 714.568 187.337L719.547 193.267C721.611 195.724 719.864 199.472 716.655 199.472L706.696 199.472C703.488 199.472 701.741 195.724 703.804 193.267L708.784 187.337Z" fill="#4B3BF4" fill-opacity="0.19"/>
-            <path class="accent-stroke" d="M709.507 187.944C710.639 186.597 712.713 186.597 713.845 187.944L718.824 193.874C720.372 195.717 719.062 198.528 716.655 198.528L706.696 198.528C704.29 198.528 702.98 195.717 704.527 193.874L709.507 187.944Z" stroke="#913BF4" stroke-opacity="0.5" stroke-width="1.88831"/>
-            <path class="chevron-mark" fill-rule="evenodd" clip-rule="evenodd" d="M714.293 81.3358L719.555 86.5978C719.97 87.0129 719.97 87.6859 719.555 88.101C719.14 88.5161 718.467 88.5161 718.052 88.101L714.073 84.122C713.779 83.8285 713.304 83.8285 713.01 84.122L709.031 88.101C708.616 88.5161 707.943 88.5161 707.528 88.101C707.113 87.6859 707.113 87.0129 707.528 86.5978L712.79 81.3358C712.989 81.1365 713.26 81.0246 713.542 81.0246C713.823 81.0246 714.094 81.1365 714.293 81.3358Z" fill="#913BF4" fill-opacity="0.5"/>
-            <circle class="hit" cx="713" cy="150" r="60"/>
-        </g>
+        // --- DOM Elements ---
+        const canvas = document.getElementById('scopeCanvas');
+        const ctx = canvas.getContext('2d');
+        const overlay = document.getElementById('connectOverlay');
+        const connStatus = document.getElementById('connStatus');
 
-        <!-- DOWN control button -->
-        <g id="ctrl-down" class="ctrl-btn">
-            <path class="bg-wash" d="M800.426 207.272C805.64 207.272 809.915 211.51 809.405 216.699C808.479 226.112 806.169 235.356 802.536 244.126C797.697 255.81 790.603 266.427 781.66 275.369C772.718 284.312 762.101 291.406 750.417 296.245C738.733 301.085 726.21 303.576 713.563 303.576C700.917 303.576 688.394 301.085 676.71 296.245C665.026 291.406 654.409 284.312 645.466 275.369C636.524 266.427 629.43 255.81 624.59 244.126C620.958 235.356 618.648 226.112 617.722 216.699C617.212 211.51 621.487 207.272 626.701 207.272L680.514 207.272C682.6 207.272 684.266 208.97 684.534 211.039C684.865 213.588 685.531 216.089 686.519 218.475C687.99 222.026 690.147 225.253 692.865 227.971C695.583 230.689 698.81 232.846 702.361 234.317C705.913 235.788 709.719 236.545 713.563 236.545C717.408 236.545 721.214 235.788 724.766 234.317C728.317 232.846 731.544 230.689 734.262 227.971C736.98 225.253 739.137 222.026 740.608 218.475C741.596 216.089 742.262 213.588 742.593 211.039C742.861 208.97 744.527 207.272 746.613 207.272L800.426 207.272Z" fill="#6934F5" fill-opacity="0.08"/>
-            <path class="border-ring" d="M713.563 301.936C725.995 301.936 738.304 299.487 749.789 294.729C761.274 289.972 771.71 282.999 780.5 274.209C789.29 265.419 796.263 254.983 801.021 243.498C804.591 234.877 806.861 225.791 807.771 216.538C808.176 212.422 804.782 208.913 800.426 208.913L746.612 208.913C745.478 208.913 744.399 209.867 744.22 211.25C743.87 213.943 743.167 216.583 742.123 219.103C740.57 222.853 738.292 226.26 735.422 229.131C732.551 232.001 729.144 234.279 725.394 235.832C721.643 237.386 717.623 238.186 713.563 238.186C709.504 238.186 705.484 237.386 701.733 235.832C697.983 234.279 694.576 232.001 691.705 229.131C688.835 226.26 686.557 222.853 685.004 219.103C683.96 216.583 683.257 213.943 682.907 211.25C682.728 209.867 681.649 208.913 680.515 208.913L626.701 208.913C622.345 208.913 618.951 212.422 619.355 216.538C620.266 225.791 622.535 234.877 626.106 243.498C630.864 254.983 637.837 265.419 646.627 274.209C655.417 282.999 665.853 289.972 677.338 294.729C688.823 299.487 701.132 301.936 713.563 301.936Z" stroke="#913BF4" stroke-opacity="0.5" stroke-width="3.28132"/>
-            <path class="accent-fill" d="M708.784 217.046C710.293 218.844 713.059 218.844 714.568 217.046L719.547 211.117C721.611 208.66 719.864 204.912 716.655 204.912L706.696 204.912C703.488 204.912 701.741 208.66 703.804 211.117L708.784 217.046Z" fill="#4B3BF4" fill-opacity="0.19"/>
-            <path class="accent-stroke" d="M709.507 216.439C710.639 217.787 712.713 217.787 713.845 216.439L718.824 210.51C720.372 208.667 719.062 205.856 716.655 205.855L706.696 205.855C704.29 205.856 702.98 208.667 704.527 210.51L709.507 216.439Z" stroke="#913BF4" stroke-opacity="0.5" stroke-width="1.88831"/>
-            <path class="chevron-mark" fill-rule="evenodd" clip-rule="evenodd" d="M712.809 319.501L718.071 314.239C718.486 313.824 718.486 313.151 718.071 312.736C717.656 312.321 716.983 312.321 716.568 312.736L712.589 316.715C712.295 317.008 711.819 317.008 711.526 316.715L707.547 312.736C707.132 312.321 706.459 312.321 706.044 312.736C705.628 313.151 705.628 313.824 706.044 314.239L711.306 319.501C711.505 319.7 711.775 319.812 712.057 319.812C712.339 319.812 712.609 319.7 712.809 319.501Z" fill="#913BF4" fill-opacity="0.5"/>
-            <circle class="hit" cx="713" cy="255" r="60"/>
-        </g>
+        // Text Updates
+        const txtTimeDiv = document.getElementById('top-timediv');
+        const txtVoltsDiv = document.getElementById('btm-voltsdiv');
+        const txtTrigLevel = document.getElementById('btm-triglevel');
+        const txtRunState = document.getElementById('osd-runstate');
+        const txtSampleRate = document.getElementById('top-samplerate');
+        const btnRunStop = document.getElementById('btn-runstop');
 
-        <!-- Decorative UI elements -->
-        <path d="M758.951 332.756C753.464 340.124 752.769 342.647 752.769 346.851V353.033C752.769 357.13 749.448 360.452 745.351 360.452H682.047C677.95 360.452 674.629 357.13 674.629 353.033V344.626C674.629 340.175 670.773 335.979 666.716 330.92" stroke="#2C155F" stroke-width="0.98912"/>
-        <line x1="761.178" y1="344.378" x2="785.906" y2="344.378" stroke="#913BF4" stroke-opacity="0.42" stroke-width="0.49456"/>
-        <line y1="-0.24728" x2="24.728" y2="-0.24728" transform="matrix(-1 0 0 1 666.222 344.625)" stroke="#913BF4" stroke-opacity="0.42" stroke-width="0.49456"/>
-        <line x1="760.188" y1="349.818" x2="781.949" y2="349.818" stroke="#913BF4" stroke-opacity="0.42" stroke-width="0.49456"/>
-        <line y1="-0.24728" x2="21.7606" y2="-0.24728" transform="matrix(-1 0 0 1 667.211 350.065)" stroke="#913BF4" stroke-opacity="0.42" stroke-width="0.49456"/>
-        <line x1="759.198" y1="354.764" x2="775.024" y2="354.764" stroke="#913BF4" stroke-opacity="0.42" stroke-width="0.49456"/>
-        <line y1="-0.24728" x2="15.8259" y2="-0.24728" transform="matrix(-1 0 0 1 668.199 355.012)" stroke="#913BF4" stroke-opacity="0.42" stroke-width="0.49456"/>
-        
-        <!-- THROTTLE Text -->
-        <text x="713.7" y="353" fill="#913BF4" fill-opacity="0.46" font-family="'Orbitron', sans-serif" font-size="8" font-weight="600" letter-spacing="0.1em" text-anchor="middle">THROTTLE</text>
+        // Fullscreen Toggle
+        document.getElementById('btn-fullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(e => console.log(e));
+            } else {
+                document.exitFullscreen();
+            }
+        });
 
-        <path d="M244.361 333.004C238.874 340.372 238.426 342.648 238.426 346.852V353.034C238.426 357.131 235.105 360.452 231.008 360.452H167.704C163.607 360.452 160.286 357.131 160.286 353.034V344.626C160.286 340.175 155.064 333.611 151.008 328.553" stroke="#2C155F" stroke-width="0.98912"/>
-        <line x1="246.835" y1="344.378" x2="271.563" y2="344.378" stroke="#913BF4" stroke-opacity="0.42" stroke-width="0.49456"/>
-        <line y1="-0.24728" x2="24.728" y2="-0.24728" transform="matrix(-1 0 0 1 151.879 344.625)" stroke="#913BF4" stroke-opacity="0.42" stroke-width="0.49456"/>
-        <line x1="245.846" y1="349.818" x2="267.606" y2="349.818" stroke="#913BF4" stroke-opacity="0.42" stroke-width="0.49456"/>
-        <line y1="-0.24728" x2="21.7606" y2="-0.24728" transform="matrix(-1 0 0 1 152.869 350.065)" stroke="#913BF4" stroke-opacity="0.42" stroke-width="0.49456"/>
-        <line x1="244.856" y1="354.764" x2="260.682" y2="354.764" stroke="#913BF4" stroke-opacity="0.42" stroke-width="0.49456"/>
-        <line y1="-0.24728" x2="15.8259" y2="-0.24728" transform="matrix(-1 0 0 1 153.857 355.012)" stroke="#913BF4" stroke-opacity="0.42" stroke-width="0.49456"/>
-        
-        <!-- STEERING Text -->
-        <text x="199.35" y="353" fill="#913BF4" fill-opacity="0.46" font-family="'Orbitron', sans-serif" font-size="8" font-weight="600" letter-spacing="0.1em" text-anchor="middle">STEERING</text>
-        </g>
-        </svg>
-    </div>
+        // Resize Canvas
+        function resizeCanvas() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            drawGraticule(); // Redraw grid immediately
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
 
-<script>
-    // --------------------------------------------------------
-    // WEB BLUETOOTH CONFIGURATION
-    // --------------------------------------------------------
-    
-    // Standard Nordic UART Service (NUS) UUIDs
-    const BLE_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-    const BLE_RX_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // Where we write data TO the ESP32
+        // --- Bluetooth Logic ---
+        document.getElementById('connectBtn').addEventListener('click', async () => {
+            try {
+                connStatus.textContent = "Requesting device (Check browser popup)...";
+                
+                // CRITICAL FIX: Filtering by service UUID bypasses strict OS naming caches
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: [SERVICE_UUID] }]
+                });
 
-    let bluetoothDevice = null;
-    let rxCharacteristic = null;
-    let supportsWriteWithoutResponse = false;
+                connStatus.textContent = "Connecting to device...";
+                bleDevice.addEventListener('gattserverdisconnected', onDisconnect);
+                const server = await bleDevice.gatt.connect();
+                
+                connStatus.textContent = "Getting Services...";
+                const service = await server.getPrimaryService(SERVICE_UUID);
+                
+                connStatus.textContent = "Getting Characteristics...";
+                rxCharacteristic = await service.getCharacteristic(RX_UUID);
+                txCharacteristic = await service.getCharacteristic(TX_UUID);
 
-    // --------------------------------------------------------
-    // HARDWARE MAPPING
-    // --------------------------------------------------------
-    const keyState = {
-        ArrowUp: false,    // L1
-        ArrowDown: false,  // L2
-        ArrowLeft: false,  // L3
-        ArrowRight: false  // L4
-    };
+                connStatus.textContent = "Starting Data Stream...";
+                await txCharacteristic.startNotifications();
+                txCharacteristic.addEventListener('characteristicvaluechanged', handleNotifications);
 
-    const validKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
-    
-    const groupFor = {
-        ArrowUp: document.getElementById('ctrl-up'),
-        ArrowDown: document.getElementById('ctrl-down'),
-        ArrowLeft: document.getElementById('ctrl-left'),
-        ArrowRight: document.getElementById('ctrl-right')
-    };
+                // Success
+                overlay.style.display = 'none';
+                isPaused = false;
+                updateRunStateUI();
+                sendAllConfigToESP32();
+                
+            } catch (error) {
+                console.error(error);
+                connStatus.textContent = "Error: " + error.message;
+            }
+        });
 
-    let currentConnectionState = false;
+        function onDisconnect() {
+            overlay.style.display = 'flex';
+            connStatus.textContent = "Connection lost. Please reconnect.";
+            isPaused = true;
+            updateRunStateUI();
+        }
 
-    // Tech-like Scramble Text Effect
-    function scrambleText(element, targetText, targetX) {
-        const chars = '01#@$%&<>?/*-+';
-        let iterations = 0;
-        const maxIterations = 12;
-        
-        element.setAttribute('x', targetX); 
+        function handleNotifications(event) {
+            if (isPaused) return;
+            const data = new Uint8Array(event.target.value.buffer);
+            if(data.length === BUFFER_SIZE) {
+                drawWaveform(data);
+                calculateStats(data);
+            }
+            
+            frameCount++;
+            let now = performance.now();
+            if (now - lastFpsTime >= 1000) {
+                document.getElementById('stat-fps').textContent = `FPS: ${frameCount}`;
+                frameCount = 0;
+                lastFpsTime = now;
+            }
+        }
 
-        const timer = setInterval(() => {
-            let scrambled = '';
-            for(let i=0; i<targetText.length; i++) {
-                if (iterations > maxIterations * 0.6) {
-                    scrambled += targetText[i];
-                } else {
-                    scrambled += chars[Math.floor(Math.random() * chars.length)];
+        async function sendCommand(cmd) {
+            if (rxCharacteristic) {
+                try {
+                    let encoder = new TextEncoder();
+                    await rxCharacteristic.writeValueWithoutResponse(encoder.encode(cmd))
+                        .catch(() => rxCharacteristic.writeValue(encoder.encode(cmd))); // Fallback for older browsers
+                } catch(e) { console.error("Write error:", e); }
+            }
+        }
+
+        function sendAllConfigToESP32() {
+            sendCommand("T" + timeSettings[timeIdx]);
+            // Convert voltage (0-3.3) to 8-bit (0-255) for ESP32
+            let trig8bit = Math.floor((triggerLevelV / 3.3) * 255);
+            setTimeout(() => sendCommand("L" + trig8bit), 50);
+            setTimeout(() => sendCommand("E" + currentEdge), 100);
+            setTimeout(() => sendCommand("P" + (isPaused ? "1" : "0")), 150);
+        }
+
+        // --- UI Interactions ---
+        function updateLabels() {
+            txtTimeDiv.textContent = timeLabels[timeIdx];
+            txtVoltsDiv.textContent = voltSettings[voltIdx].toFixed(2) + "V/div";
+            txtTrigLevel.textContent = triggerLevelV.toFixed(2) + "V";
+            
+            // Calc sample rate approx (ESP32 ADC takes ~9us)
+            let delayUs = timeSettings[timeIdx] + 9; 
+            let sr = 1000000 / delayUs;
+            txtSampleRate.textContent = (sr / 1000).toFixed(1) + " kS/s";
+            
+            if(!isPaused) drawGraticule(); // Redraw UI elements on canvas
+        }
+
+        function updateRunStateUI() {
+            if (isPaused) {
+                btnRunStop.textContent = "RUN";
+                btnRunStop.classList.remove("border-active-green");
+                txtRunState.textContent = "STOPPED";
+                txtRunState.className = "text-red-500";
+            } else {
+                btnRunStop.textContent = "STOP";
+                btnRunStop.classList.add("border-active-green");
+                txtRunState.textContent = "RUNNING - AUTO TRIG";
+                txtRunState.className = "text-gray-300";
+            }
+        }
+
+        btnRunStop.addEventListener('click', () => {
+            isPaused = !isPaused;
+            updateRunStateUI();
+            sendCommand("P" + (isPaused ? "1" : "0"));
+        });
+
+        // Time Buttons
+        document.getElementById('btn-time-minus').addEventListener('click', () => {
+            if(timeIdx > 0) { timeIdx--; updateLabels(); sendCommand("T" + timeSettings[timeIdx]); }
+        });
+        document.getElementById('btn-time-plus').addEventListener('click', () => {
+            if(timeIdx < timeSettings.length - 1) { timeIdx++; updateLabels(); sendCommand("T" + timeSettings[timeIdx]); }
+        });
+
+        // Volts Buttons (Frontend only)
+        document.getElementById('btn-volt-minus').addEventListener('click', () => {
+            if(voltIdx > 0) { voltIdx--; updateLabels(); }
+        });
+        document.getElementById('btn-volt-plus').addEventListener('click', () => {
+            if(voltIdx < voltSettings.length - 1) { voltIdx++; updateLabels(); }
+        });
+
+        // Position Buttons (Frontend only)
+        document.getElementById('btn-vpos-minus').addEventListener('click', () => {
+            verticalOffset -= 0.5; drawGraticule();
+        });
+        document.getElementById('btn-vpos-plus').addEventListener('click', () => {
+            verticalOffset += 0.5; drawGraticule();
+        });
+
+        // Trigger Level
+        document.getElementById('btn-trigl-minus').addEventListener('click', () => {
+            triggerLevelV = Math.max(0, triggerLevelV - 0.1);
+            let trig8bit = Math.floor((triggerLevelV / 3.3) * 255);
+            sendCommand("L" + trig8bit);
+            updateLabels();
+        });
+        document.getElementById('btn-trigl-plus').addEventListener('click', () => {
+            triggerLevelV = Math.min(3.3, triggerLevelV + 0.1);
+            let trig8bit = Math.floor((triggerLevelV / 3.3) * 255);
+            sendCommand("L" + trig8bit);
+            updateLabels();
+        });
+
+        // Trigger Edge Buttons
+        const btnEdgeRise = document.getElementById('btn-edge-rise');
+        const btnEdgeFall = document.getElementById('btn-edge-fall');
+        btnEdgeRise.addEventListener('click', () => {
+            currentEdge = 1;
+            btnEdgeRise.classList.add("border-active-green");
+            btnEdgeFall.classList.remove("border-active-green");
+            sendCommand("E1");
+        });
+        btnEdgeFall.addEventListener('click', () => {
+            currentEdge = 0;
+            btnEdgeFall.classList.add("border-active-green");
+            btnEdgeRise.classList.remove("border-active-green");
+            sendCommand("E0");
+        });
+
+
+        // --- Drawing Engine ---
+        const hDivs = 12; // 12 horizontal divisions
+        const vDivs = 8;  // 8 vertical divisions
+
+        function drawGraticule() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const w = canvas.width;
+            const h = canvas.height;
+            const dx = w / hDivs;
+            const dy = h / vDivs;
+
+            // Draw Grid
+            ctx.beginPath();
+            ctx.strokeStyle = '#222222';
+            ctx.lineWidth = 1;
+            
+            // Vertical lines
+            for(let i = 1; i < hDivs; i++) {
+                ctx.moveTo(i * dx, 0);
+                ctx.lineTo(i * dx, h);
+            }
+            // Horizontal lines
+            for(let i = 1; i < vDivs; i++) {
+                ctx.moveTo(0, i * dy);
+                ctx.lineTo(w, i * dy);
+            }
+            ctx.stroke();
+
+            // Draw Center Axes & Ticks
+            ctx.beginPath();
+            ctx.strokeStyle = '#444444';
+            
+            // Center Horizontal Axis (0V reference if centered)
+            let centerY = h / 2;
+            ctx.moveTo(0, centerY);
+            ctx.lineTo(w, centerY);
+            
+            // Center Vertical Axis
+            let centerX = w / 2;
+            ctx.moveTo(centerX, 0);
+            ctx.lineTo(centerX, h);
+
+            // Tick marks on center horizontal
+            for(let i = 0; i < hDivs * 5; i++) {
+                let tickX = i * (dx / 5);
+                let tickLen = (i % 5 === 0) ? 6 : 3;
+                ctx.moveTo(tickX, centerY - tickLen);
+                ctx.lineTo(tickX, centerY + tickLen);
+            }
+            
+            // Tick marks on center vertical
+            for(let i = 0; i < vDivs * 5; i++) {
+                let tickY = i * (dy / 5);
+                let tickLen = (i % 5 === 0) ? 6 : 3;
+                ctx.moveTo(centerX - tickLen, tickY);
+                ctx.lineTo(centerX + tickLen, tickY);
+            }
+            ctx.stroke();
+
+            // Draw Trigger Level Marker (Yellow Arrow on right side)
+            let voltsPerDiv = voltSettings[voltIdx];
+            let pixelPerVolt = dy / voltsPerDiv;
+            let zeroVoltY = (h/2) + (1.65 * pixelPerVolt) + (verticalOffset * dy);
+            let trigY = zeroVoltY - (triggerLevelV * pixelPerVolt);
+
+            ctx.fillStyle = '#fbbf24'; // Yellow
+            ctx.beginPath();
+            ctx.moveTo(w, trigY);
+            ctx.lineTo(w - 10, trigY - 5);
+            ctx.lineTo(w - 10, trigY + 5);
+            ctx.fill();
+        }
+
+        function drawWaveform(data) {
+            drawGraticule();
+            
+            const w = canvas.width;
+            const h = canvas.height;
+            const dy = h / vDivs;
+            let voltsPerDiv = voltSettings[voltIdx];
+            let pixelPerVolt = dy / voltsPerDiv;
+            
+            // Center is mapped to 1.65V
+            let zeroVoltY = (h/2) + (1.65 * pixelPerVolt) + (verticalOffset * dy);
+
+            ctx.beginPath();
+            ctx.strokeStyle = '#fbbf24'; // Scoppy Yellow
+            ctx.lineWidth = 1.5;
+            ctx.lineJoin = 'round';
+
+            const sliceWidth = w / data.length;
+            let x = 0;
+
+            for (let i = 0; i < data.length; i++) {
+                let v = (data[i] / 255.0) * 3.3;
+                let y = zeroVoltY - (v * pixelPerVolt);
+
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+                x += sliceWidth;
+            }
+            ctx.stroke();
+        }
+
+        function calculateStats(data) {
+            let max = 0, min = 255;
+            for(let i=0; i<data.length; i++) {
+                if(data[i] > max) max = data[i];
+                if(data[i] < min) min = data[i];
+            }
+            
+            let vMaxReal = (max / 255.0) * 3.3;
+            let vMinReal = (min / 255.0) * 3.3;
+            let vpp = vMaxReal - vMinReal;
+            
+            document.getElementById('osd-vmax').textContent = "+" + vMaxReal.toFixed(2) + "V";
+            document.getElementById('osd-vmin').textContent = "+" + vMinReal.toFixed(2) + "V";
+            document.getElementById('osd-vpp').textContent = "+" + vpp.toFixed(2) + "V";
+
+            let crossings = 0;
+            let firstCrossIdx = -1;
+            let lastCrossIdx = -1;
+            let midPoint = (max + min) / 2;
+            
+            for(let i=1; i<data.length; i++) {
+                if(data[i-1] < midPoint && data[i] >= midPoint) {
+                    if(firstCrossIdx === -1) firstCrossIdx = i;
+                    lastCrossIdx = i;
+                    crossings++;
                 }
             }
-            element.textContent = scrambled;
-            iterations++;
 
-            if(iterations >= maxIterations) {
-                clearInterval(timer);
-                element.textContent = targetText;
-            }
-        }, 30);
-    }
-
-    function setStatus(connected) {
-        if (currentConnectionState === connected) return;
-        currentConnectionState = connected;
-
-        const badge = document.getElementById('connection-badge');
-        const badgeBg = document.getElementById('badge-bg');
-        const text = document.getElementById('status-text');
-        const btIcon = document.getElementById('bluetooth-icon');
-        const dot = document.getElementById('connection-dot');
-        const dotRing = document.getElementById('connection-dot-ring');
-
-        if (!badge || !text || !dot) return;
-
-        if (connected) {
-            badge.style.opacity = '1';
-            badgeBg.setAttribute('x', '755');
-            badgeBg.setAttribute('width', '124.293');
-            btIcon.style.transform = 'translate(0px, 0px)';
-            
-            scrambleText(text, 'CONNECTED', '822');
-            
-            btIcon.classList.remove('bt-off');
-            btIcon.classList.add('bt-on');
-            
-            dot.classList.add('dot-alive');
-            dot.classList.remove('dot-offline');
-            dotRing.style.stroke = '#34d399';
-        } else {
-            badge.style.opacity = '0.7';
-            badgeBg.setAttribute('x', '730');
-            badgeBg.setAttribute('width', '149.293');
-            btIcon.style.transform = 'translate(-25px, 0px)';
-            
-            scrambleText(text, 'DISCONNECTED', '812');
-            
-            btIcon.classList.remove('bt-on');
-            btIcon.classList.add('bt-off');
-            
-            dot.classList.remove('dot-alive');
-            dot.classList.add('dot-offline');
-            dotRing.style.stroke = '#f43f5e';
-        }
-    }
-
-    // --- BLUETOOTH CONNECTION LOGIC ---
-    async function connectBluetooth() {
-        if (currentConnectionState) return; // already connected
-
-        // If we already picked a device this session, try a silent
-        // reconnect first instead of popping the chooser dialog again.
-        if (bluetoothDevice && bluetoothDevice.gatt) {
-            try {
-                console.log('Attempting silent reconnect to previously selected device...');
-                await bindToDevice(bluetoothDevice);
-                return;
-            } catch (err) {
-                console.warn('Silent reconnect failed, falling back to device picker.', err);
-            }
-        }
-
-        try {
-            console.log('Requesting Bluetooth Device...');
-            const device = await navigator.bluetooth.requestDevice({
-                filters: [{ services: [BLE_SERVICE_UUID] }]
-                // Alternatively, filter by name instead:
-                // filters: [{ namePrefix: 'Controller_V2' }],
-                // optionalServices: [BLE_SERVICE_UUID]
-            });
-
-            await bindToDevice(device);
-
-        } catch (error) {
-            console.error('Connection failed!', error);
-            setStatus(false);
-        }
-    }
-
-    async function bindToDevice(device) {
-        bluetoothDevice = device;
-        bluetoothDevice.removeEventListener('gattserverdisconnected', onDisconnected);
-        bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
-
-        console.log('Connecting to GATT Server...');
-        const server = await bluetoothDevice.gatt.connect();
-
-        console.log('Getting Service...');
-        const service = await server.getPrimaryService(BLE_SERVICE_UUID);
-
-        console.log('Getting Characteristic...');
-        rxCharacteristic = await service.getCharacteristic(BLE_RX_UUID);
-
-        // writeValueWithoutResponse() is the modern replacement for the
-        // deprecated writeValue(); fall back if the browser is old.
-        supportsWriteWithoutResponse = typeof rxCharacteristic.writeValueWithoutResponse === 'function';
-
-        console.log('Bluetooth connected successfully! writeWithoutResponse supported:', supportsWriteWithoutResponse);
-        setStatus(true);
-
-        // Send an initial "all off" command so the board's state matches the UI
-        sendCommandToESP32();
-    }
-
-    function onDisconnected() {
-        console.log('Bluetooth Device disconnected');
-        setStatus(false);
-        rxCharacteristic = null;
-    }
-
-    // Attach click event to the connection badge
-    document.getElementById('connection-badge').addEventListener('click', connectBluetooth);
-
-
-    // --- COMMAND SENDING ---
-    async function sendCommandToESP32() {
-        if (!rxCharacteristic) {
-            console.warn('sendCommandToESP32 skipped: not connected');
-            return;
-        }
-
-        const l1 = keyState.ArrowUp ? 1 : 0;
-        const l2 = keyState.ArrowDown ? 1 : 0;
-        const l3 = keyState.ArrowLeft ? 1 : 0;
-        const l4 = keyState.ArrowRight ? 1 : 0;
-
-        // Format: "L1,L2,L3,L4\n" e.g. "1,0,0,0\n"
-        const cmdString = `${l1},${l2},${l3},${l4}\n`;
-        const encoder = new TextEncoder();
-        const payload = encoder.encode(cmdString);
-
-        console.log('Sending command:', cmdString.trim());
-
-        try {
-            if (supportsWriteWithoutResponse) {
-                await rxCharacteristic.writeValueWithoutResponse(payload);
+            if (crossings > 1) {
+                let samplesPerCycle = (lastCrossIdx - firstCrossIdx) / (crossings - 1);
+                let timePerSample = (timeSettings[timeIdx] + 9) / 1000000.0; 
+                let freq = 1.0 / (samplesPerCycle * timePerSample);
+                
+                let freqText = freq > 999 ? (freq/1000).toFixed(2) + ' kHz' : Math.round(freq) + ' Hz';
+                document.getElementById('osd-freq').textContent = freqText;
             } else {
-                await rxCharacteristic.writeValue(payload);
-            }
-        } catch (err) {
-            console.error('Write error (device may have disconnected):', err);
-        }
-    }
-
-    function updateUI(key, isPressed) {
-        if(groupFor[key]) {
-            groupFor[key].classList.toggle('active', isPressed);
-        }
-    }
-
-    // --- Keyboard Control ---
-    window.addEventListener('keydown', async (e) => {
-        if (validKeys.includes(e.key)) {
-            if (!currentConnectionState) {
-                await connectBluetooth();
-            }
-            if (!keyState[e.key] && currentConnectionState) {
-                keyState[e.key] = true;
-                updateUI(e.key, true);
-                sendCommandToESP32();
+                document.getElementById('osd-freq').textContent = "<1 Hz";
             }
         }
-    });
 
-    window.addEventListener('keyup', (e) => {
-        if (validKeys.includes(e.key)) {
-            keyState[e.key] = false;
-            updateUI(e.key, false);
-            if (currentConnectionState) sendCommandToESP32();
-        }
-    });
+        // Initialize UI labels
+        updateLabels();
 
-    // --- Multi-touch Control ---
-    validKeys.forEach(key => {
-        const el = groupFor[key];
-        if (!el) return;
-
-        const press = async (e) => {
-            if (e && e.cancelable) e.preventDefault(); 
-            
-            if (!currentConnectionState) {
-                await connectBluetooth();
-            }
-
-            if (!keyState[key] && currentConnectionState) {
-                keyState[key] = true;
-                updateUI(key, true);
-                sendCommandToESP32();
-            }
-        };
-        const release = (e) => {
-            if (e && e.cancelable) e.preventDefault();
-            if (keyState[key]) {
-                keyState[key] = false;
-                updateUI(key, false);
-                if (currentConnectionState) sendCommandToESP32();
-            }
-        };
-
-        el.addEventListener('touchstart', press, {passive: false});
-        el.addEventListener('touchend', release, {passive: false});
-        el.addEventListener('touchcancel', release, {passive: false});
-
-        el.addEventListener('mousedown', press);
-        el.addEventListener('mouseup', release);
-        el.addEventListener('mouseleave', release);
-    });
-
-</script>
+    </script>
 </body>
 </html>
